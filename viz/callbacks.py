@@ -50,10 +50,10 @@ def register_callbacks(app):
             raise PreventUpdate
 
         try:
-            rows = loader.load_sheet(sheet_id, worksheet_name)
-            # main-df — это уже Store, туда кладём dict
-            return {"rows": rows}
+            df = loader.load_sheet(sheet_id, worksheet_name)
+            # Кладём в Store список dict'ов (как в старой версии)
+            return df.to_dict("records")
 
         except Exception as e:
             print(f"[GSHEET LOAD ERROR] {e}")
-            return {"rows": []}
+            return []
