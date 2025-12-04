@@ -63,6 +63,12 @@ class GoogleSheetsLoader:
         self._cache[cache_key] = df
         return df
 
+    def load_sheet(self, sheet_id, sheet_name, force_reload=False):
+        """
+        Обёртка для совместимости: вызывает основной метод load().
+        """
+        return self.load(sheet_id, sheet_name, force_reload=force_reload)
+
     def clear_cache(self):
         self._cache.clear()
         logger.info("[GSHEET LOADER] Кэш очищен")
