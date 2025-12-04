@@ -21,6 +21,24 @@ def register_callbacks(app):
         State("gsheet-id", "value"),
         prevent_initial_call=True,
     )
+    # @app.callback(
+    #     Output("gsheet-data-store", "data"),
+    #     Input("gsheet-name", "value"),
+    #     State("gsheet-id", "value"),
+    #     prevent_initial_call=True,
+    # )
+    def load_selected_sheet(worksheet_name, sheet_id):
+        if not worksheet_name or not sheet_id:
+            raise PreventUpdate
+
+        try:
+            data = loader.load_sheet(sheet_id, worksheet_name)
+            return {"data": data}
+
+        except Exception as e:
+            print(f"[GSHEET LOAD ERROR] {e}")
+            return {"data": []}
+
     def load_gsheet_worksheets(n_clicks, sheet_id):
         if not sheet_id:
             raise PreventUpdate
@@ -33,3 +51,22 @@ def register_callbacks(app):
         except Exception as e:
             print(f"[GSHEET ERROR] {e}")
             return [], []
+
+    @app.callback(
+        Output("main-df", "data"),
+        Input("gsheet-name", "value"),
+        State("gsheet-id", "value"),
+        prevent_initial_call=True,
+    )
+    def load_selected_sheet(worksheet_name, sheet_id):
+        if not worksheet_name or not sheet_id:
+            raise PreventUpdate
+
+        try:
+            data = loader.load_sheet(sheet_id, worksheet_name)
+            # data сейчас список словарей/строк, кладём как есть
+            return {"rows": data}
+
+        except Exception as e:
+            print(f"[GSHEET LOAD ERROR] {e}")
+            return {"rows": []}
