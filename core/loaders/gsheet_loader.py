@@ -11,6 +11,11 @@ class GoogleSheetsLoader:
         self.scopes               = scopes
         self._cache               = {}
 
+    def list_sheets(self, sheet_id: str):
+        sh = self.client.open_by_key(sheet_id)
+        worksheets = sh.worksheets()
+        return [ws.title for ws in worksheets]
+
     def load(self, sheet_id, sheet_name, force_reload=False):
         cache_key = (sheet_id, sheet_name)
 
