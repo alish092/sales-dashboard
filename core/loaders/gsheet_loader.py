@@ -12,7 +12,15 @@ class GoogleSheetsLoader:
         self._cache               = {}
 
     def list_sheets(self, sheet_id: str):
-        sh = self.client.open_by_key(sheet_id)
+        """
+        Вернуть список названий листов в указанной таблице.
+        """
+        creds = Credentials.from_service_account_file(
+            self.service_account_file,
+            scopes=self.scopes,
+        )
+        client = gspread.authorize(creds)
+        sh = client.open_by_key(sheet_id)
         worksheets = sh.worksheets()
         return [ws.title for ws in worksheets]
 
