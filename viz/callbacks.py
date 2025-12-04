@@ -1,3 +1,5 @@
+# viz/callbacks.py
+
 from dash import Input, Output, State
 from dash.exceptions import PreventUpdate
 
@@ -5,6 +7,7 @@ from config import Config
 from core.loaders.gsheet_loader import GoogleSheetsLoader
 
 
+# Один общий лоадер для всего приложения
 loader = GoogleSheetsLoader(
     service_account_file=Config.SERVICE_ACCOUNT_FILE,
     scopes=Config.SCOPES,
@@ -12,8 +15,14 @@ loader = GoogleSheetsLoader(
 
 
 def register_callbacks(app):
+    """
+    Регистрируем ВСЕ коллбеки здесь.
+    Пока делаем только:
+    1) загрузка списка листов в два дропдауна
+    2) загрузка выбранного листа в main-df
+    """
 
-    # 1) Подгружаем список листов в оба дропдауна
+    # 1. Загружаем список листов
     @app.callback(
         [
             Output("gsheet-name", "options"),
@@ -25,20 +34,21 @@ def register_callbacks(app):
     )
     def load_gsheet_worksheets(n_clicks, sheet_id):
         if not sheet_id:
+            # если не введён ID — ничего не делаем
             raise PreventUpdate
 
         try:
             sheet_names = loader.list_sheets(sheet_id)
             options = [{"label": name, "value": name} for name in sheet_names]
-            # тут ВАЖНО: возвращаем ДВА списка, а не dict
+            # ДВА списка, как требует Dash
             return options, options
 
         except Exception as e:
             print(f"[GSHEET ERROR] {e}")
-            # при ошибке тоже нужно вернуть ДВА списка
+            # При ошибке возвращаем пустые списки, но не валим приложение
             return [], []
 
-    # 2) По выбранному листу грузим данные в main-df
+    # 2. Загружаем выбранный лист и кладём его в main-df
     @app.callback(
         Output("main-df", "data"),
         Input("gsheet-name", "value"),
@@ -51,9 +61,17 @@ def register_callbacks(app):
 
         try:
             df = loader.load_sheet(sheet_id, worksheet_name)
-            # Кладём в Store список dict'ов (как в старой версии)
+            if df is None:
+                return []
+
+            # На всякий случай убираем дубли колонок
+            if df.columns.duplicated().any():
+                df = df.loc[:, ~df.columns.duplicated()].copy()
+
+            # dcc.Store ждёт JSON-сериализуемый объект → records
             return df.to_dict("records")
 
         except Exception as e:
             print(f"[GSHEET LOAD ERROR] {e}")
+            # При ошибке просто кладём пустой список, а не валим сервер
             return []
