@@ -1,7 +1,7 @@
 import dash
 from dash import Dash
 import dash_bootstrap_components as dbc
-from core.loaders.gsheet_loader import GoogleSheetsLoaderдава
+from core.loaders.gsheet_loader import GoogleSheetsLoader
 
 from viz.layout import build_layout
 from viz.callbacks import register_callbacks
