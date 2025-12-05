@@ -1,4 +1,6 @@
 # viz/callbacks.py
+import pandas as pd
+import plotly.graph_objects as go
 
 from dash import Input, Output, State
 from dash.exceptions import PreventUpdate
@@ -75,3 +77,50 @@ def register_callbacks(app):
             print(f"[GSHEET LOAD ERROR] {e}")
             # При ошибке просто кладём пустой список, а не валим сервер
             return []
+
+    @app.callback(
+        Output("debug-main-df", "children"),
+        Input("main-df", "data"),
+        prevent_initial_call=True,
+    )
+    def show_main_df(data):
+        if not data:
+            raise PreventUpdate
+        df = pd.DataFrame(data)
+        return df.head(20).to_string()
+
+    @app.callback(
+        Output("calls-trend", "figure"),
+        Input("main-df", "data"),
+        prevent_initial_call=True,
+    )
+    def update_calls_trend(data):
+        if not data:
+            raise PreventUpdate
+
+        df = pd.DataFrame(data)
+
+        if "Показатель" not in df.columns or "декабрь" not in df.columns:
+            raise PreventUpdate
+
+        plot_df = df.copy()
+
+        # Делаем колонку числовой
+        plot_df["декабрь"] = pd.to_numeric(plot_df["декабрь"], errors="coerce")
+
+        # Оставляем строки, где декабрь — число
+        plot_df = plot_df.dropna(subset=["декабрь"])
+
+        fig = go.Figure()
+        fig.add_bar(
+            x=plot_df["Показатель"],
+            y=plot_df["декабрь"],
+        )
+
+        fig.update_layout(
+            title="Показатели за декабрь (черновой график)",
+            margin=dict(l=40, r=20, t=40, b=140),
+            xaxis_tickangle=-40,
+        )
+
+        return fig
