@@ -2,3 +2,10 @@ dash
 pandas
 plotly
 openpyxl
+gspread
+google-auth
+dash-bootstrap-components
+logging
+dash-bootstrap-components  # используется в app.py
+gspread  # используется в gsheet_loader.py
+google-auth  # для Credentials

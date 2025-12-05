@@ -1,9 +1,11 @@
 # viz/callbacks.py
-import pandas as pd
-import plotly.graph_objects as go
 
 from dash import Input, Output, State
 from dash.exceptions import PreventUpdate
+
+import pandas as pd
+import plotly.graph_objects as go
+import re
 
 from config import Config
 from core.loaders.gsheet_loader import GoogleSheetsLoader
@@ -18,10 +20,10 @@ loader = GoogleSheetsLoader(
 
 def register_callbacks(app):
     """
-    Регистрируем ВСЕ коллбеки здесь.
-    Пока делаем только:
+    Коллбеки:
     1) загрузка списка листов в два дропдауна
     2) загрузка выбранного листа в main-df
+    3) построение графика calls-trend по строкам ВЗ
     """
 
     # 1. Загружаем список листов
@@ -36,18 +38,14 @@ def register_callbacks(app):
     )
     def load_gsheet_worksheets(n_clicks, sheet_id):
         if not sheet_id:
-            # если не введён ID — ничего не делаем
             raise PreventUpdate
 
         try:
             sheet_names = loader.list_sheets(sheet_id)
             options = [{"label": name, "value": name} for name in sheet_names]
-            # ДВА списка, как требует Dash
             return options, options
-
         except Exception as e:
             print(f"[GSHEET ERROR] {e}")
-            # При ошибке возвращаем пустые списки, но не валим приложение
             return [], []
 
     # 2. Загружаем выбранный лист и кладём его в main-df
@@ -66,61 +64,88 @@ def register_callbacks(app):
             if df is None:
                 return []
 
-            # На всякий случай убираем дубли колонок
+            # убираем дубли колонок на всякий случай
             if df.columns.duplicated().any():
                 df = df.loc[:, ~df.columns.duplicated()].copy()
 
-            # dcc.Store ждёт JSON-сериализуемый объект → records
             return df.to_dict("records")
-
         except Exception as e:
             print(f"[GSHEET LOAD ERROR] {e}")
-            # При ошибке просто кладём пустой список, а не валим сервер
             return []
 
-    @app.callback(
-        Output("debug-main-df", "children"),
-        Input("main-df", "data"),
-        prevent_initial_call=True,
-    )
-    def show_main_df(data):
-        if not data:
-            raise PreventUpdate
-        df = pd.DataFrame(data)
-        return df.head(20).to_string()
-
+    # 3. Строим график по "ВХОДЯЩИЕ ЗВОНКИ - ВЗ", "Принятые ВЗ", "Пропущенные ВЗ"
     @app.callback(
         Output("calls-trend", "figure"),
         Input("main-df", "data"),
         prevent_initial_call=True,
     )
     def update_calls_trend(data):
-        if not data:
-            raise PreventUpdate
-
-        df = pd.DataFrame(data)
-
-        if "Показатель" not in df.columns or "декабрь" not in df.columns:
-            raise PreventUpdate
-
-        plot_df = df.copy()
-
-        # Делаем колонку числовой
-        plot_df["декабрь"] = pd.to_numeric(plot_df["декабрь"], errors="coerce")
-
-        # Оставляем строки, где декабрь — число
-        plot_df = plot_df.dropna(subset=["декабрь"])
-
+        # Базовая фигура, чтобы всегда что-то вернуть
         fig = go.Figure()
-        fig.add_bar(
-            x=plot_df["Показатель"],
-            y=plot_df["декабрь"],
-        )
 
-        fig.update_layout(
-            title="Показатели за декабрь (черновой график)",
-            margin=dict(l=40, r=20, t=40, b=140),
-            xaxis_tickangle=-40,
-        )
+        if not data:
+            fig.update_layout(title="Нет данных для отображения")
+            raise PreventUpdate
 
-        return fig
+        try:
+            df = pd.DataFrame(data)
+
+            # Проверяем, что нужные колонки есть
+            if "Показатель" not in df.columns:
+                fig.update_layout(title="Колонка 'Показатель' не найдена")
+                return fig
+
+            # Находим колонки-дни: 01.12, 02.12, 03.12, ...
+            day_cols = [
+                c for c in df.columns
+                if re.match(r"\d{2}\.\d{2}", str(c))
+            ]
+            if not day_cols:
+                fig.update_layout(title="Не найдено колонок с датами (формат 01.12, 02.12, ...)")
+                return fig
+
+            # Функция, которая достаёт ряд по названию показателя
+            def get_series(metric_name: str):
+                row = df[df["Показатель"] == metric_name]
+                if row.empty:
+                    return None
+                s = row.iloc[0][day_cols]
+                # приводим к числам
+                return pd.to_numeric(s, errors="coerce")
+
+            series_config = [
+                ("ВХОДЯЩИЕ ЗВОНКИ - ВЗ", "Входящие ВЗ"),
+                ("Принятые ВЗ", "Принятые ВЗ"),
+                ("Пропущенные ВЗ", "Пропущенные ВЗ"),
+            ]
+
+            for raw_name, label in series_config:
+                y = get_series(raw_name)
+                if y is not None and not y.isna().all():
+                    fig.add_trace(
+                        go.Scatter(
+                            x=day_cols,
+                            y=y,
+                            mode="lines+markers",
+                            name=label,
+                        )
+                    )
+
+            if not fig.data:
+                fig.update_layout(title="Не удалось найти строки с ВЗ для графика")
+            else:
+                fig.update_layout(
+                    title="Динамика звонков по дням",
+                    xaxis_title="Дата",
+                    yaxis_title="Количество",
+                    margin=dict(l=40, r=20, t=60, b=120),
+                    xaxis_tickangle=-45,
+                )
+
+            return fig
+
+        except Exception as e:
+            # Логируем, но не роняем приложение
+            print(f"[CALLS_TREND ERROR] {e}")
+            fig.update_layout(title=f"Ошибка построения графика: {e}")
+            return fig
